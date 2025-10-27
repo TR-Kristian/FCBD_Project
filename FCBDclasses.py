@@ -27,18 +27,19 @@ class BusDoorController:
     def request_open(self):
         if self.sensors.bus_stopped and not self.sensors.obstacle_detected:
             self.actuator.open()
-            print("Az ajtó nyitva")
+            print("Door opened")
         else:
-            print("Az ajtót nem lehet biztonságosan kinyitni!")
+            print("Door cannot be opened safely!")
 
     def request_close(self):
         if not self.sensors.obstacle_detected:
             self.actuator.close()
-            print("Az ajtó zárva")
+            print("Door closed")
         else:
-            print("Akadály észlelve, az ajtó nem zárható be!")
+            print("Obstacle detected, cannot close the door!")
 
-# Példányosítás és összekapcsolás
+# Instantiate and connect systems
 sensors = SensorSystem()
 actuator = DoorActuator()
 controller = BusDoorController(sensors, actuator)
+
