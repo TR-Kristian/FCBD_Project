@@ -1,6 +1,6 @@
 # FCBD Project
 
-This project contains Python classes for the FCBD (First Come, Best Dressed) system.
+This project contains Python classes for the FCBD (Fucking Cool Bus Door) system.
 
 ## Getting Started
 
