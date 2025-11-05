@@ -57,7 +57,7 @@ def test_happy_path_open_close():
         # actuator command will be called; simulate sensor becomes True shortly
         pos.set(True)
 
-    # monkey-patch motor.command to flip sensor
+    # motor.command to flip sensor
     orig_cmd = motor.command
 
     def cmd_and_flip(c):

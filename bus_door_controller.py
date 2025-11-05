@@ -28,7 +28,7 @@ class DoorState(Enum):
 
 class SensorType(Enum):
     POSITION = "position"
-    EDGE = "edge"
+    EDGE = "edge" # not sure about this one
     OBSTACLE = "obstacle"
     LIMIT_SWITCH = "limit_switch"
 
