@@ -23,6 +23,13 @@ import time
 import threading
 import argparse
 import random
+import sys
+try:
+    import tkinter as tk
+    from tkinter import ttk, messagebox
+    TK_AVAILABLE = True
+except Exception:
+    TK_AVAILABLE = False
 from typing import Callable
 from bus_door_controller import (
     DoorController,
@@ -167,7 +174,107 @@ def main():
     parser.add_argument("--obstacle-prob", type=float, default=1.0, help="Probability (0.0-1.0) that an obstacle appears during closing (default: 1.0)")
     parser.add_argument("--persist-obstacle", action="store_true", help="If set, obstacles persist until cleared manually (default: False)")
     parser.add_argument("--quiet", action="store_true", help="Suppress printed steps (except errors)")
+    parser.add_argument("--interactive", action="store_true", help="Prompt for CLI options interactively (useful when running from VSCode)")
+    parser.add_argument("--gui", action="store_true", help="Open a small GUI dialog to enter options (requires tkinter)")
     args = parser.parse_args()
+
+    # Interactive input (useful when running from VSCode Run) - overrides parsed args
+    if args.gui:
+        if not TK_AVAILABLE:
+            print_step("tkinter not available; falling back to interactive prompts")
+        else:
+            # show GUI dialog and collect options
+            def show_gui_dialog(defaults: dict):
+                root = tk.Tk()
+                root.title("Bus Journey Simulator")
+                root.resizable(False, False)
+
+                frm = ttk.Frame(root, padding=12)
+                frm.grid()
+
+                ttk.Label(frm, text="Number of stops:").grid(column=0, row=0, sticky="w")
+                stops_var = tk.StringVar(value=str(defaults.get("stops", 2)))
+                stops_entry = ttk.Entry(frm, width=10, textvariable=stops_var)
+                stops_entry.grid(column=1, row=0)
+
+                ttk.Label(frm, text="Obstacle probability (0.0-1.0):").grid(column=0, row=1, sticky="w")
+                prob_var = tk.StringVar(value=str(defaults.get("obstacle_prob", 1.0)))
+                prob_entry = ttk.Entry(frm, width=10, textvariable=prob_var)
+                prob_entry.grid(column=1, row=1)
+
+                persist_var = tk.BooleanVar(value=bool(defaults.get("persist_obstacle", False)))
+                persist_cb = ttk.Checkbutton(frm, text="Persist obstacle", variable=persist_var)
+                persist_cb.grid(column=0, row=2, columnspan=2, sticky="w")
+
+                quiet_var = tk.BooleanVar(value=bool(defaults.get("quiet", False)))
+                quiet_cb = ttk.Checkbutton(frm, text="Quiet output", variable=quiet_var)
+                quiet_cb.grid(column=0, row=3, columnspan=2, sticky="w")
+
+                result = {}
+
+                def on_start():
+                    try:
+                        result["stops"] = max(1, int(stops_var.get()))
+                    except Exception:
+                        messagebox.showerror("Invalid input", "Number of stops must be an integer >= 1")
+                        return
+                    try:
+                        prob = float(prob_var.get())
+                        if not (0.0 <= prob <= 1.0):
+                            raise ValueError()
+                        result["obstacle_prob"] = prob
+                    except Exception:
+                        messagebox.showerror("Invalid input", "Obstacle probability must be a number between 0.0 and 1.0")
+                        return
+                    result["persist_obstacle"] = bool(persist_var.get())
+                    result["quiet"] = bool(quiet_var.get())
+                    root.destroy()
+
+                def on_cancel():
+                    root.destroy()
+                    sys.exit(0)
+
+                btn_frame = ttk.Frame(frm)
+                btn_frame.grid(column=0, row=4, columnspan=2, pady=(8, 0))
+                ttk.Button(btn_frame, text="Start", command=on_start).grid(column=0, row=0, padx=(0, 6))
+                ttk.Button(btn_frame, text="Cancel", command=on_cancel).grid(column=1, row=0)
+
+                root.mainloop()
+                return result
+
+            gui_defaults = {"stops": args.stops, "obstacle_prob": args.obstacle_prob, "persist_obstacle": args.persist_obstacle, "quiet": args.quiet}
+            gui_result = show_gui_dialog(gui_defaults)
+            # Override args with GUI results if provided
+            if gui_result:
+                args.stops = gui_result.get("stops", args.stops)
+                args.obstacle_prob = gui_result.get("obstacle_prob", args.obstacle_prob)
+                args.persist_obstacle = gui_result.get("persist_obstacle", args.persist_obstacle)
+                args.quiet = gui_result.get("quiet", args.quiet)
+    elif args.interactive:
+        def ask(prompt: str, default: str) -> str:
+            try:
+                return input(f"{prompt} [{default}]: ") or default
+            except EOFError:
+                # Not interactive (e.g. running in a non-tty); fallback to default
+                return default
+
+        stops_raw = ask("Number of stops", str(args.stops))
+        try:
+            args.stops = max(1, int(stops_raw))
+        except Exception:
+            args.stops = 2
+
+        prob_raw = ask("Obstacle probability (0.0-1.0)", str(args.obstacle_prob))
+        try:
+            args.obstacle_prob = min(1.0, max(0.0, float(prob_raw)))
+        except Exception:
+            args.obstacle_prob = 1.0
+
+        persist_raw = ask("Persist obstacle? (y/n)", "n").lower()
+        args.persist_obstacle = persist_raw.startswith("y")
+
+        quiet_raw = ask("Quiet output? (y/n)", "n").lower()
+        args.quiet = quiet_raw.startswith("y")
 
     printer = make_printer(not args.quiet)
     printer("Starting bus journey simulation")

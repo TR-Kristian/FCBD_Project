@@ -15,6 +15,10 @@ unit tests under `tests/` that show how to use mock sensors/actuators.
 
 ## Quick start (Windows / PowerShell)
 
+GUI MODE
+
+& .\.venv\Scripts\python.exe .\simulate_bus_journey.py --gui
+
 1. Create a virtual environment and activate it (PowerShell):
 
 ```powershell
@@ -60,6 +64,28 @@ Options:
 - `--obstacle-prob p` — probability (0.0-1.0) an obstacle appears during closing (default: 1.0)
 - `--persist-obstacle` — if set, obstacles persist until cleared manually (default: False)
 - `--quiet` — suppress printed steps (useful for automated runs)
+
+Interactive mode (run from VSCode):
+
+If you prefer to enter options interactively (handy when using the "Run Python File"
+command in VSCode which doesn't expose CLI args easily), pass `--interactive` when
+launching the script and you'll be prompted for each option at runtime. Example:
+
+```powershell
+& .\.venv\Scripts\python.exe .\simulate_bus_journey.py --interactive
+```
+
+You'll be asked for:
+- Number of stops
+- Obstacle probability (0.0-1.0)
+- Persist obstacle (y/n)
+- Quiet output (y/n)
+
+Alternatively I added a GUI with Tkinter
+
+```powershell
+& .\.venv\Scripts\python.exe .\simulate_bus_journey.py --gui
+```
 
 The simulator is intentionally lightweight — if you want the simulator to drive
 real hardware, replace the mocks in `sim/mocks.py` with real drivers that
