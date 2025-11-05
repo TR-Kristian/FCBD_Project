@@ -18,24 +18,24 @@ import time
 
 
 class DoorState(Enum):
-    CLOSED = "closed"
-    OPENING = "opening"
-    OPEN = "open"
-    CLOSING = "closing"
-    STOPPED = "stopped"
-    FAULT = "fault"
+    CLOSED = 0
+    OPENING = 1
+    OPEN = 2
+    CLOSING = 3
+    STOPPED = 4
+    FAULT = 5
 
 
 class SensorType(Enum):
-    POSITION = "position"
-    EDGE = "edge" # not sure about this one
-    OBSTACLE = "obstacle"
-    LIMIT_SWITCH = "limit_switch"
+    POSITION = 0
+    EDGE = 1  # not sure about this one
+    OBSTACLE = 2
+    LIMIT_SWITCH = 3
 
 
 class ActuatorType(Enum):
-    MOTOR = "motor"
-    LOCK = "lock"
+    MOTOR = 0
+    LOCK = 1
 
 
 class DoorOperationError(RuntimeError):
@@ -103,7 +103,7 @@ class SafetySystem:
         """Check sensors and update safety flags. Returns True if safe to operate."""
         self.last_safety_check = time.time()
         self.obstacle_detected = any(
-            (s.type == SensorType.OBSTACLE and getattr(s, "is_triggered", lambda: False)())
+            (s.type == SensorType.OBSTACLE and getattr(s, "is_triggered", lambda: False)()) # lambda to avoid error if method missing
             for s in sensors
         )
         # interlock example: if limit switch shows door fully open/closed unexpectedly
