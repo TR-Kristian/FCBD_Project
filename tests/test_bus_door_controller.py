@@ -8,43 +8,13 @@ from bus_door_controller import (
     SafetySystem,
     DoorOperationError,
 )
+from sim.mocks import MockSensor, MockActuator
 
+# This test file uses simple mock classes to simulate sensors and actuators
+# The test is written to simulate a bus moving from one stop to another,
+# with door operations in between.
 
-class MockSensor:
-    def __init__(self, id, type, initial_value=False, healthy=True):
-        self.id = id
-        self.type = type
-        self._value = initial_value
-        self.healthy = healthy
-
-    def read(self):
-        return self._value
-
-    def is_triggered(self):
-        return bool(self._value)
-
-    def set(self, v):
-        self._value = v
-
-
-class MockActuator:
-    def __init__(self, id, type):
-        self.id = id
-        self.type = type
-        self.last_command = None
-        self.stopped = True
-
-    def command(self, cmd):
-        self.last_command = cmd
-        self.stopped = False
-        # simulate immediate acceptance
-        return True
-
-    def stop(self):
-        self.stopped = True
-
-    def get_status(self):
-        return {"id": self.id, "type": self.type.value if hasattr(self.type, 'value') else str(self.type), "stopped": self.stopped}
+# Use shared mocks from sim.mocks
 
 
 def test_happy_path_open_close():

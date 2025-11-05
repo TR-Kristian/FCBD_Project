@@ -34,6 +34,37 @@ python -m pip install -r requirements.txt
 python -m pytest -q
 ```
 
+## Simulator (CLI)
+
+A simple simulator script is included at `simulate_bus_journey.py`. It uses the
+`DoorController` and shared mock hardware in `sim/mocks.py` to demonstrate
+typical door sequences and safety behavior. The simulator accepts a few CLI
+options to control how many stops to simulate and how obstacles are injected.
+
+Example runs (PowerShell):
+
+Run the default demo (2 stops, always spawn obstacles):
+
+```powershell
+& .\.venv\Scripts\python.exe .\simulate_bus_journey.py
+```
+
+Run 5 stops, 30% chance of an obstacle during closing, and be quiet (minimal output):
+
+```powershell
+& .\.venv\Scripts\python.exe .\simulate_bus_journey.py --stops 5 --obstacle-prob 0.3 --quiet
+```
+
+Options:
+- `--stops N` — number of stops to simulate (default: 2)
+- `--obstacle-prob p` — probability (0.0-1.0) an obstacle appears during closing (default: 1.0)
+- `--persist-obstacle` — if set, obstacles persist until cleared manually (default: False)
+- `--quiet` — suppress printed steps (useful for automated runs)
+
+The simulator is intentionally lightweight — if you want the simulator to drive
+real hardware, replace the mocks in `sim/mocks.py` with real drivers that
+implement the same minimal protocol.
+
 The repo includes `requirements.txt` (currently lists `pytest`) so tests can run
 without hardware.
 

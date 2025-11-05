@@ -186,12 +186,17 @@ class DoorController:
                 self.state = DoorState.STOPPED
                 return False
             if pos_sensor is not None:
-                val = pos_sensor.read()
-                # assume position sensor returns True when open
-                if val:
+                try:
+                    val = pos_sensor.read()
+                    # assume position sensor returns True when open
+                    if val:
+                        motor.stop()
+                        self.state = DoorState.OPEN
+                        return True
+                except RuntimeError as e:
                     motor.stop()
-                    self.state = DoorState.OPEN
-                    return True
+                    self.state = DoorState.FAULT
+                    raise DoorOperationError(str(e))
             time.sleep(0.01)
 
         motor.stop()
@@ -205,7 +210,10 @@ class DoorController:
             raise DoorOperationError("Preconditions failed: sensors/actuators unhealthy or missing")
 
         if not self.safety_system.check_safety(self.sensors):
-            self.state = DoorState.FAULT
+            if self.safety_system.obstacle_detected:
+                self.state = DoorState.STOPPED
+            else:
+                self.state = DoorState.FAULT
             return False
 
         motor = self._find_actuator(ActuatorType.MOTOR)
@@ -223,22 +231,33 @@ class DoorController:
         # assume position sensor returns False when closed
         while time.time() - start < timeout_s:
             if not self.safety_system.check_safety(self.sensors):
-                motor.stop()
                 # if obstacle detected while closing, attempt to reopen once
                 if self.safety_system.obstacle_detected:
+                    # Stop first
+                    motor.stop()
                     # try to open a bit to release
                     motor.command({"action": "open"})
                     self.state = DoorState.OPENING
                     time.sleep(0.05)
+                    # Stop again after opening
+                    motor.command({"action": "stop"})
+                    motor.stop()
+                else:
+                    motor.stop()
                 self.state = DoorState.STOPPED
                 return False
             if pos_sensor is not None:
-                val = pos_sensor.read()
-                # assume False when closed
-                if not val:
+                try:
+                    val = pos_sensor.read()
+                    # assume False when closed
+                    if not val:
+                        motor.stop()
+                        self.state = DoorState.CLOSED
+                        return True
+                except RuntimeError as e:
                     motor.stop()
-                    self.state = DoorState.CLOSED
-                    return True
+                    self.state = DoorState.FAULT
+                    raise DoorOperationError(str(e))
             time.sleep(0.01)
 
         motor.stop()
