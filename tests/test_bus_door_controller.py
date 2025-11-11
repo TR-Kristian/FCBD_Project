@@ -7,8 +7,9 @@ from bus_door_controller import (
     ActuatorType,
     SafetySystem,
     DoorOperationError,
+    ExternalButton,
 )
-from sim.mocks import MockSensor, MockActuator
+from sim.mocks import MockSensor, MockActuator, MockDriverInterface
 
 # This test file uses simple mock classes to simulate sensors and actuators
 # The test is written to simulate a bus moving from one stop to another,
@@ -52,8 +53,11 @@ def test_sensor_failure_raises_fault():
     motor = MockActuator("m1", ActuatorType.MOTOR)
     controller = DoorController("door1", sensors=[pos], actuators=[motor], safety_system=SafetySystem())
 
-    with pytest.raises(DoorOperationError):
-        controller.open_door(timeout_s=0.5)
+    # With the new out-of-service functionality, unhealthy sensors cause the system
+    # to transition to OUT_OF_SERVICE state and return False instead of raising
+    result = controller.open_door(timeout_s=0.5)
+    assert result is False
+    assert controller.state.name == 'OUT_OF_SERVICE'
 
 
 def test_obstacle_while_closing_triggers_safety_and_stop():
@@ -79,3 +83,44 @@ def test_obstacle_while_closing_triggers_safety_and_stop():
     assert controller.state in (controller.state.STOPPED, controller.state.FAULT, controller.state.CLOSING, controller.state.STOPPED)
     # safety should have registered obstacle
     assert safety.obstacle_detected is True
+
+
+def test_sensor_self_check_and_report():
+    pos = MockSensor("pos1", SensorType.POSITION, initial_value=False)
+    assert pos.self_check() is True
+    
+    pos.report_error("Test error")
+    assert pos.healthy is False
+    assert not pos.self_check()
+
+
+def test_external_button_operations():
+    pos = MockSensor("pos1", SensorType.POSITION, initial_value=False)
+    speed = MockSensor("speed1", SensorType.SPEED, initial_value=False)
+    motor = MockActuator("m1", ActuatorType.MOTOR)
+    driver_ui = MockDriverInterface()
+    external_button = ExternalButton("ext1", "door1")
+    
+    controller = DoorController(
+        id="door1",
+        sensors=[pos, speed],
+        actuators=[motor],
+        driver_interface=driver_ui,
+        external_button=external_button
+    )
+    
+    # Test when bus is stopped
+    assert external_button.press() is True
+    assert controller.check_external_button() is True
+    
+    # Test when bus is moving
+    speed.set(True)  # Bus is moving
+    external_button.press()
+    assert controller.check_external_button() is False
+    assert driver_ui._last_error == "External button pressed while moving - ignored"
+
+    # Test button disable/enable
+    external_button.disable()
+    assert external_button.press() is False
+    external_button.enable()
+    assert external_button.press() is True

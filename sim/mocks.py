@@ -17,6 +17,7 @@ class MockSensor:
         self._value = initial_value
         self.healthy = healthy
         self._last_read = time.time()
+        self._error = None
 
     def read(self) -> Any:
         if not self.healthy:
@@ -35,6 +36,47 @@ class MockSensor:
 
     def simulate_failure(self) -> None:
         self.healthy = False
+
+    def self_check(self) -> bool:
+        """Perform self-diagnostic check."""
+        return self.healthy
+
+    def report_error(self, error_msg: str) -> None:
+        """Report an error condition."""
+        self._error = error_msg
+        self.healthy = False
+
+    def update_value(self, new_value: Any) -> None:
+        """Update sensor value."""
+        self._value = new_value
+        self._last_read = time.time()
+
+
+class MockSpeedSensor(MockSensor):
+    """Mock speed sensor that returns a numeric speed via read().
+
+    is_triggered() returns True when speed > 0.0.
+    """
+    def __init__(self, id: str, initial_speed: float = 0.0, healthy: bool = True):
+        super().__init__(id, SensorType.SPEED, initial_value=False, healthy=healthy)
+        # store numeric speed separately
+        self._speed = float(initial_speed)
+
+    def read(self) -> float:
+        if not self.healthy:
+            raise RuntimeError(f"Sensor {self.id} failed")
+        # return numeric speed
+        return self._speed
+
+    def is_triggered(self) -> bool:
+        if not self.healthy:
+            raise RuntimeError(f"Sensor {self.id} failed")
+        return self._speed > 0.0
+
+    def set_speed(self, speed: float) -> None:
+        self._speed = float(speed)
+        # keep _value for compatibility (bool triggered)
+        self._value = self._speed > 0.0
 
 
 class MockActuator:
@@ -89,6 +131,12 @@ class MockDriverInterface:
         self.override_requested = False
         self.last_command: Dict[str, Any] | None = None
         self._should_accept = True
+        # Physical/UI elements
+        self.openButton: bool = False
+        self.closeButton: bool = False
+        self.emergencyStopButton: bool = False
+        self.statusLED: bool = False
+        self.last_error: str | None = None
 
     def send_command(self, cmd: Dict[str, Any]) -> bool:
         self.last_command = cmd
@@ -104,3 +152,16 @@ class MockDriverInterface:
     def simulate_disconnected(self) -> None:
         self.connected = False
         self._should_accept = False
+
+    # New UI methods
+    def showStatus(self) -> None:
+        """Update the driver UI status LED (simple mock implementation)."""
+        # Toggle status LED to indicate activity
+        self.statusLED = True
+
+    def showError(self, msg: str) -> None:
+        """Display an error on the driver UI (mock stores last_error)."""
+        self.last_error = msg
+        self._last_error = msg  # For test verification
+        # When error occurs, clear status LED
+        self.statusLED = False

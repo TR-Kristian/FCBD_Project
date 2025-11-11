@@ -23,6 +23,7 @@ from bus_door_controller import (
     DoorOperationError,
     DoorState,
     DriverInterface,
+    ExternalButton,
 )
 from sim.mocks import MockSensor, MockActuator, MockDriverInterface
 
@@ -32,7 +33,7 @@ def setup_door_system():
     """Create a complete door system with all sensors."""
     position = MockSensor("pos1", SensorType.POSITION, initial_value=False)
     obstacle = MockSensor("obs1", SensorType.OBSTACLE, initial_value=False)
-    edge = MockSensor("edge1", SensorType.EDGE, initial_value=False)
+    speed = MockSensor("speed1", SensorType.SPEED, initial_value=False)
     limit = MockSensor("lim1", SensorType.LIMIT_SWITCH, initial_value=False)
     
     motor = MockActuator("motor1", ActuatorType.MOTOR)
@@ -40,12 +41,14 @@ def setup_door_system():
     
     driver = MockDriverInterface()
     safety = SafetySystem()
+    external_button = ExternalButton("ext1", "door1")
     
     controller = DoorController(
         "door1",
-        sensors=[position, obstacle, edge, limit],
+        sensors=[position, obstacle, speed, limit],
         actuators=[motor, lock],
         driver_interface=driver,
+        external_button=external_button,
         safety_system=safety
     )
     
@@ -53,12 +56,13 @@ def setup_door_system():
         "controller": controller,
         "position": position,
         "obstacle": obstacle,
-        "edge": edge,
+        "speed": speed,
         "limit": limit,
         "motor": motor,
         "lock": lock,
         "driver": driver,
-        "safety": safety
+        "safety": safety,
+        "external_button": external_button
     }
 
 
@@ -214,6 +218,156 @@ class TestDriverInterface:
         t.start()
         assert sys["controller"].close_door(timeout_s=1.0) is True
         assert sys["controller"].state == DoorState.CLOSED
+
+
+class TestSpeedSensor:
+    """Test speed sensor safety features."""
+
+    def test_prevent_open_while_moving(self, setup_door_system):
+        sys = setup_door_system
+        
+        # Simulate bus in motion
+        sys["speed"].update_value(True)
+        
+        # Try to open door while moving
+        result = sys["controller"].open_door(timeout_s=0.5)
+        assert result is False
+        assert sys["controller"].state == DoorState.CLOSED
+        assert sys["driver"].last_error == "Cannot open doors while vehicle is moving"
+
+    def test_allow_open_when_stopped(self, setup_door_system):
+        sys = setup_door_system
+        
+        # Ensure bus is stopped
+        sys["speed"].update_value(False)
+        
+        def simulate_door_open():
+            time.sleep(0.1)
+            sys["position"].update_value(True)
+        
+        t = threading.Thread(target=simulate_door_open)
+        t.start()
+        
+        result = sys["controller"].open_door(timeout_s=1.0)
+        assert result is True
+        assert sys["controller"].state == DoorState.OPEN
+
+
+class TestExternalButton:
+    """Test external button functionality."""
+
+    def test_external_button_at_stop(self, setup_door_system):
+        sys = setup_door_system
+        
+        # Bus is stopped
+        sys["speed"].update_value(False)
+        
+        # Press external button
+        assert sys["external_button"].press() is True
+        assert sys["controller"].check_external_button() is True
+
+        def simulate_door_open():
+            time.sleep(0.1)
+            sys["position"].update_value(True)
+        
+        t = threading.Thread(target=simulate_door_open)
+        t.start()
+        
+        # Door should open
+        result = sys["controller"].open_door(timeout_s=1.0)
+        assert result is True
+        assert sys["controller"].state == DoorState.OPEN
+
+    def test_external_button_while_moving(self, setup_door_system):
+        sys = setup_door_system
+        
+        # Bus is moving
+        sys["speed"].update_value(True)
+        
+        # Press external button
+        sys["external_button"].press()
+        assert sys["controller"].check_external_button() is False
+        assert sys["driver"].last_error == "External button pressed while moving - ignored"
+        assert sys["controller"].state == DoorState.CLOSED
+
+    def test_external_button_disable_enable(self, setup_door_system):
+        sys = setup_door_system
+        
+        # Disable button
+        sys["external_button"].disable()
+        assert sys["external_button"].press() is False
+        
+        # Enable button
+        sys["external_button"].enable()
+        assert sys["external_button"].press() is True
+
+
+class TestDriverUIUpdates:
+    """Test driver interface status and error updates."""
+
+    def test_status_updates_on_operations(self, setup_door_system):
+        sys = setup_door_system
+        
+        def simulate_door_motion(to_open: bool):
+            time.sleep(0.1)
+            sys["position"].update_value(to_open)
+        
+        # Test open operation
+        t = threading.Thread(target=lambda: simulate_door_motion(True))
+        t.start()
+        sys["controller"].open_door(timeout_s=1.0)
+        assert sys["driver"].statusLED is True  # Status should be updated
+        
+        # Test close operation
+        t = threading.Thread(target=lambda: simulate_door_motion(False))
+        t.start()
+        sys["controller"].close_door(timeout_s=1.0)
+        assert sys["driver"].statusLED is True  # Status should be updated
+
+    def test_error_updates_on_failures(self, setup_door_system):
+        sys = setup_door_system
+        
+        # Test sensor failure
+        sys["position"].report_error("Position sensor malfunction")
+        assert sys["position"].self_check() is False
+        
+        # With the new out-of-service functionality, unhealthy sensors cause the system
+        # to transition to OUT_OF_SERVICE state and return False instead of raising
+        result = sys["controller"].open_door(timeout_s=0.5)
+        assert result is False
+        assert sys["controller"].state.name == 'OUT_OF_SERVICE'
+        
+        assert sys["driver"].statusLED is False  # LED should be off on error
+        assert sys["driver"].last_error is not None  # Error should be reported
+
+
+class TestEnhancedSensorInterface:
+    """Test enhanced sensor interface functionality."""
+
+    def test_sensor_self_diagnostics(self, setup_door_system):
+        sys = setup_door_system
+        
+        # Test initial health
+        for sensor in [sys["position"], sys["obstacle"], sys["speed"], sys["limit"]]:
+            assert sensor.self_check() is True
+            assert sensor.healthy is True
+        
+        # Test error reporting
+        sys["position"].report_error("Test error")
+        assert sys["position"].self_check() is False
+        assert sys["position"].healthy is False
+
+    def test_sensor_value_updates(self, setup_door_system):
+        sys = setup_door_system
+        
+        # Test value updates
+        sys["position"].update_value(True)
+        assert sys["position"].read() is True
+        assert sys["position"].is_triggered() is True
+        
+        sys["speed"].update_value(False)
+        assert sys["speed"].read() is False
+        assert sys["speed"].is_triggered() is False
 
 
 class TestEdgeCases:

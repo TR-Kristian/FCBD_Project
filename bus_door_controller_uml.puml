@@ -1,0 +1,197 @@
+@startuml bus_door_controller_uml
+!define ABSTRACT_COLOR #FFE6CC
+!define ENUM_COLOR #E6F3FF
+!define DATACLASS_COLOR #E6FFE6
+!define MAIN_COLOR #FFE6E6
+
+set namespaceSeparator ::
+
+title Bus Door Controller - UML Class Diagram
+
+' ========== ENUMERATIONS ==========
+
+enum DoorState #ENUM_COLOR {
+  CLOSED = 0
+  OPENING = 1
+  OPEN = 2
+  CLOSING = 3
+  STOPPED = 4
+  FAULT = 5
+  OUT_OF_SERVICE = 6
+}
+
+enum SensorType #ENUM_COLOR {
+  POSITION = 0
+  OBSTACLE = 1
+  SPEED = 2
+  LIMIT_SWITCH = 3
+}
+
+enum ActuatorType #ENUM_COLOR {
+  MOTOR = 0
+  LOCK = 1
+  EXTERNAL_BUTTON = 2
+}
+
+' ========== PROTOCOL/INTERFACES (Abstract) ==========
+
+interface Sensor #ABSTRACT_COLOR {
+  {field} id: str
+  {field} type: SensorType
+  {field} healthy: bool
+  {method} +read() -> Any
+  {method} +is_triggered() -> bool
+  {method} +self_check() -> bool
+  {method} +report_error(error_msg: str) -> None
+  {method} +update_value(new_value: Any) -> None
+}
+
+interface Actuator #ABSTRACT_COLOR {
+  {field} id: str
+  {field} type: ActuatorType
+  {method} +command(cmd: Dict[str, Any]) -> bool
+  {method} +stop() -> None
+  {method} +get_status() -> Dict[str, Any]
+}
+
+interface DriverInterface #ABSTRACT_COLOR {
+  {field} connected: bool
+  {field} protocol: str
+  {field} openButton: bool
+  {field} closeButton: bool
+  {field} emergencyStopButton: bool
+  {field} statusLED: bool
+  {method} +send_command(cmd: Dict[str, Any]) -> bool
+  {method} +receive_ack(timeout_s: float = 1.0) -> Optional[Dict[str, Any]]
+  {method} +request_override(reason: str) -> bool
+  {method} +showStatus() -> None
+  {method} +showError(msg: str) -> None
+}
+
+' ========== EXCEPTION ==========
+
+class DoorOperationError #FFE6E6 {
+}
+
+DoorOperationError --|> RuntimeError
+
+' ========== DATA CLASSES ==========
+
+class ExternalButton #DATACLASS_COLOR {
+  {field} id: str
+  {field} door_id: str
+  {field} pressed: bool = False
+  {field} enabled: bool = True
+  {field} last_press_time: float
+  {method} +press() -> bool
+  {method} +reset() -> None
+  {method} +disable() -> None
+  {method} +enable() -> None
+}
+
+class SafetySystem #DATACLASS_COLOR {
+  {field} emergency_stop_engaged: bool = False
+  {field} obstacle_detected: bool = False
+  {field} moving: bool = False
+  {field} interlock_engaged: bool = False
+  {field} last_safety_check: float
+  {method} +check_safety(sensors: List[Sensor]) -> bool
+  {method} +engage_emergency_stop(reason: str) -> None
+  {method} +reset() -> None
+}
+
+' ========== MAIN CONTROLLER ==========
+
+class DoorController #FFE6E6 {
+  {field} id: str
+  {field} sensors: List[Sensor]
+  {field} actuators: List[Actuator]
+  {field} driver_interface: Optional[DriverInterface]
+  {field} external_button: Optional[ExternalButton]
+  {field} safety_system: SafetySystem
+  {field} state: DoorState
+  {field} command_timeout_s: float = 5.0
+  {field} _sensor_fail_prob: float = 0.2
+  --
+  {method} -_find_sensor(t: SensorType) -> Optional[Sensor]
+  {method} -_find_actuator(t: ActuatorType) -> Optional[Actuator]
+  {method} -_check_preconditions() -> bool
+  {method} -_check_critical_sensors() -> bool
+  {method} +open_door(timeout_s: Optional[float]) -> bool
+  {method} +close_door(timeout_s: Optional[float]) -> bool
+  {method} +stop() -> None
+  {method} +emergency_unlock() -> None
+  {method} +check_external_button() -> bool
+  {method} +set_out_of_service(reason: str) -> None
+  {method} +status_report() -> Dict[str, Any]
+}
+
+' ========== RELATIONSHIPS ==========
+
+DoorController --> "1" DoorState : uses
+DoorController --> "1..*" Sensor : uses
+DoorController --> "1..*" Actuator : uses
+DoorController --> "0..1" DriverInterface : uses
+DoorController --> "0..1" ExternalButton : has
+DoorController --> "1" SafetySystem : has
+
+Sensor --> SensorType : has
+Actuator --> ActuatorType : has
+
+ExternalButton --> "1" DoorController : belongs-to
+
+SafetySystem --> "1..*" Sensor : monitors
+
+DoorController ..> DoorOperationError : raises
+
+note right of DoorController
+  Main orchestrator for door control
+  Manages sensors, actuators, and safety
+  Implements graceful error handling
+  Supports OUT_OF_SERVICE mode
+end note
+
+note right of SafetySystem
+  Encapsulates all safety checks
+  Monitors critical conditions:
+  - Emergency stop
+  - Obstacle detection
+  - Vehicle movement
+  - Interlock status
+end note
+
+note right of ExternalButton
+  External request button
+  Can be enabled/disabled
+  Tracks press state
+  Records press timestamp
+end note
+
+note bottom of Sensor
+  Protocol (Abstract Interface)
+  All sensors must implement this
+  Supports self-diagnostics
+end note
+
+note bottom of Actuator
+  Protocol (Abstract Interface)
+  All actuators must implement this
+  Can be commanded and stopped
+end note
+
+note bottom of DriverInterface
+  Protocol (Abstract Interface)
+  Bridge to vehicle/driver UI
+  Shows status and error messages
+end note
+
+' ========== LEGEND ==========
+
+legend right
+  |<#FFE6E6> Main Controller |
+  |<#DATACLASS_COLOR> Data Classes |
+  |<#ABSTRACT_COLOR> Protocols/Interfaces |
+  |<#ENUM_COLOR> Enumerations |
+endlegend
+
+@enduml
