@@ -468,6 +468,11 @@ def main():
                     for stop in range(1, result["stops"] + 1):
                         gui_printer(f"\n--- Stop {stop} ---")
                         sim.run_one_stop()
+                        # If controller went out of service during the stop, halt the remaining stops
+                        status = controller.status_report()
+                        if status.get('out_of_service', False):
+                            gui_printer("\nJourney halted: BUS OUT OF SERVICE. Remaining stops aborted.")
+                            break
                         time.sleep(0.6)
 
                     gui_printer("\nJourney complete!")
@@ -634,6 +639,11 @@ def main():
     for stop in range(1, args.stops + 1):
         printer(f"--- Stop {stop} ---")
         sim.run_one_stop()
+        # If controller went out of service during the stop, halt the remaining stops
+        status = controller.status_report()
+        if status.get('out_of_service', False):
+            printer("Journey halted: BUS OUT OF SERVICE. Remaining stops aborted.")
+            break
         # short travel time
         time.sleep(0.6)
 
